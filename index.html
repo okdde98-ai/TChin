@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ใบบันทึกกระบวนการแก้ปัญหา (Debugging Log)</title>
+
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- ฟอนต์ไทย -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- React + ReactDOM UMD -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase v9 compat -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics-compat.js"></script>
+
+  <style>
+    body { font-family: 'Noto Sans Thai', 'Inter', sans-serif; background-color: #f3f4f6; }
+
+    /* Uiverse.io Button */
+    .button {
+      line-height: 1;
+      text-decoration: none;
+      display: inline-flex;
+      border: none;
+      cursor: pointer;
+      align-items: center;
+      gap: 0.75rem;
+      background-color: var(--clr);
+      color: #fff;
+      border-radius: 10rem;
+      font-weight: 600;
+      padding: 0.75rem 1.5rem;
+      padding-left: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: background-color 0.3s;
+    }
+
+    .button__icon-wrapper {
+      flex-shrink: 0;
+      width: 25px;
+      height: 25px;
+      position: relative;
+      color: var(--clr);
+      background-color: #fff;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .button:hover {
+      background-color: #000;
+    }
+
+    .button:hover .button__icon-wrapper {
+      color: #000;
+    }
+
+    .button__icon-svg--copy {
+      position: absolute;
+      transform: translate(-150%, 150%);
+    }
+
+    .button:hover .button__icon-svg:first-child {
+      transition: transform 0.3s ease-in-out;
+      transform: translate(150%, -150%);
+    }
+
+    .button:hover .button__icon-svg--copy {
+      transition: transform 0.3s ease-in-out 0.1s;
+      transform: translate(0);
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+  const firebaseConfig = {
+    apiKey: "AIzaSyALtj2HWW3bZCPhxJWCaHBlZ9v6r6lneSU",
+    authDomain: "phin-8f61c.firebaseapp.com",
+    databaseURL: "https://phin-8f61c-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "phin-8f61c",
+    storageBucket: "phin-8f61c.firebasestorage.app",
+    messagingSenderId: "819876335927",
+    appId: "1:819876335927:web:7ad4655d717d8cde740ab2",
+    measurementId: "G-5CYQ3532LJ"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const analytics = firebase.analytics();
+  const db = firebase.firestore();
+
+  const App = () => {
+    const [groupName, setGroupName] = React.useState("");
+    const [groupEntered, setGroupEntered] = React.useState(false);
+    const [logs, setLogs] = React.useState([]);
+    const [form, setForm] = React.useState({
+      mission_name: "",
+      expected_result: "",
+      actual_problem: "",
+      bug_type: "บั๊กคำสั่ง/ตรรกะ",
+      solution_action: "",
+      responsible_member: "",
+      reflection: "",
+    });
+    const [msg, setMsg] = React.useState("");
+    const [loading, setLoading] = React.useState(false);
+    const [editId, setEditId] = React.useState(null);
+
+    const listenLogs = (group) => {
+      setLoading(true);
+      const ref = db.collection("artifacts").doc("KKRHub")
+                    .collection("groups").doc(group)
+                    .collection("debugging_logs")
+                    .orderBy("timestamp", "desc");
+      ref.onSnapshot(snapshot => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setLogs(data);
+        setLoading(false);
+      }, err => {
+        console.error(err);
+        setMsg("เกิดข้อผิดพลาด Firebase: " + err.message);
+        setLoading(false);
+      });
+    };
+
+    const handleGroupEnter = (e) => {
+      e.preventDefault();
+      if (!groupName.trim()) return;
+      setGroupEntered(true);
+      listenLogs(groupName.trim());
+    };
+
+    const handleGoBack = () => {
+      setGroupEntered(false);
+      setLogs([]);
+      setGroupName("");
+      setEditId(null);
+    };
+
+    const handleChange = (e) => setForm({...form, [e.target.name]: e.target.value});
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      if (!groupName) return;
+      setMsg(editId ? "กำลังอัปเดต..." : "กำลังบันทึก...");
+      try {
+        if(editId){
+          await db.collection("artifacts").doc("KKRHub")
+            .collection("groups").doc(groupName)
+            .collection("debugging_logs").doc(editId)
+            .update({
+              ...form,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+          setMsg("แก้ไขสำเร็จ!");
+          setEditId(null);
+        } else {
+          await db.collection("artifacts").doc("KKRHub")
+            .collection("groups").doc(groupName)
+            .collection("debugging_logs")
+            .add({
+              ...form,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+          setMsg("บันทึกสำเร็จ!");
+        }
+        setForm({
+          mission_name: "",
+          expected_result: "",
+          actual_problem: "",
+          bug_type: "บั๊กคำสั่ง/ตรรกะ",
+          solution_action: "",
+          responsible_member: "",
+          reflection: "",
+        });
+        setTimeout(() => setMsg(""), 3000);
+      } catch (err) {
+        setMsg("ไม่สำเร็จ: " + err.message);
+      }
+    };
+
+    const handleEdit = (log) => {
+      setForm({...log});
+      setEditId(log.id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    if (!groupEntered) {
+      return (
+        <div className="h-screen flex items-center justify-center">
+          <form onSubmit={handleGroupEnter} className="bg-white p-8 rounded-xl shadow space-y-4 w-80 text-center">
+            <h1 className="text-2xl font-bold text-indigo-700 mb-4">ใส่ชื่อกลุ่ม🤝</h1>
+            <input
+              type="text"
+              placeholder="ชื่อกลุ่ม"
+              value={groupName}
+              onChange={e => setGroupName(e.target.value)}
+              className="w-full p-2 border rounded mb-6"
+              required
+            />
+            <button type="submit" className="button" style={{"--clr": "#7808d0"}}>
+              <span className="button__icon-wrapper">
+                <svg viewBox="0 0 14 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="button__icon-svg" width="10">
+                  <path d="M13.376 11.552l-.264-10.44-10.44-.24.024 2.28 6.96-.048L.2 12.56l1.488 1.488 9.432-9.432-.048 6.912 2.304.024z" fill="currentColor"></path>
+                </svg>
+                <svg viewBox="0 0 14 15" fill="none" width="10" xmlns="http://www.w3.org/2000/svg" className="button__icon-svg button__icon-svg--copy">
+                  <path d="M13.376 11.552l-.264-10.44-10.44-.24.024 2.28 6.96-.048L.2 12.56l1.488 1.488 9.432-9.432-.048 6.912 2.304.024z" fill="currentColor"></path>
+                </svg>
+              </span>
+              เข้าสู่ระบบ
+            </button>
+          </form>
+        </div>
+      );
+    }
+
+    if (loading) return <div className="h-screen flex items-center justify-center text-gray-500 text-xl">กำลังโหลด...</div>;
+
+    return (
+      <div className="max-w-3xl mx-auto p-6">
+        <header className="bg-white p-4 rounded-xl shadow mb-6 text-center">
+          <h1 className="text-2xl font-bold text-indigo-700">ใบบันทึกกระบวนการแก้ปัญหา (Debugging Log)</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            กลุ่ม: {groupName} 
+            <button onClick={handleGoBack} className="ml-2 px-2 py-1 bg-yellow-300 rounded hover:bg-yellow-400 text-xs">กลับไปหน้าเลือกกลุ่ม</button>
+          </p>
+        </header>
+
+        {msg && <div className={`p-3 mb-4 text-sm rounded-lg ${msg.includes("ไม่สำเร็จ") ? "bg-red-100 text-red-700":"bg-green-100 text-green-700"}`}>{msg}</div>}
+
+        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow mb-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">ภารกิจย่อย (Mission)</label>
+            <input
+              name="mission_name"
+              value={form.mission_name}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              placeholder="เช่น การเลี้ยวซ้าย 90 องศา (Turn left 90°)"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">ผลลัพธ์ที่ตั้งใจ (Expected Result)</label>
+            <textarea
+              name="expected_result"
+              value={form.expected_result}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              placeholder="เช่น รถหันไปทางซ้ายและหยุดนิ่ง (Car turns left and stops)"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-red-600">สิ่งที่เกิดขึ้นจริง (Actual Problem) *</label>
+            <textarea
+              name="actual_problem"
+              value={form.actual_problem}
+              onChange={handleChange}
+              className="w-full p-2 border rounded border-red-300"
+              placeholder="เช่น รถเลี้ยวไม่พอดี (Car didn't turn correctly)"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">ประเภทของบั๊ก (Bug Type)</label>
+            <select
+              name="bug_type"
+              value={form.bug_type}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+            >
+              <option>บั๊กคำสั่ง/ตรรกะ (Logic Bug)</option>
+              <option>บั๊กกายภาพ/หุ่นยนต์ (Physical/Robot Bug)</option>
+              <option>เข้าใจโจทย์ผิด (Misunderstanding)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">วิธีแก้ไข (Solution)</label>
+            <textarea
+              name="solution_action"
+              value={form.solution_action}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              placeholder="เช่น ปรับมุมเลี้ยวเป็น 85 องศา (Adjust turn angle to 85°)"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">ผู้เสนอวิธีแก้ (Responsible Member)</label>
+            <input
+              name="responsible_member"
+              value={form.responsible_member}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              placeholder="ชื่อเพื่อนที่เสนอแนวคิดนี้"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">สิ่งที่เรียนรู้ (Reflection)</label>
+            <textarea
+              name="reflection"
+              value={form.reflection}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              placeholder="เช่น การปรับมุมสำคัญต่อความแม่นยำ (Adjusting angle is crucial for accuracy)"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700"
+          >
+            {editId ? "บันทึกการแก้ไข (Save Edit)" : "บันทึกกระบวนการแก้ไข (Save Log)"}
+          </button>
+        </form>
+
+        <section>
+          <h2 className="text-lg font-semibold mb-3">ประวัติการบันทึก ({logs.length})</h2>
+          {logs.length === 0 ? (
+            <p className="bg-white p-4 rounded shadow text-gray-500">ยังไม่มีการบันทึก</p>
+          ) : (
+            logs.map(log => (
+              <div key={log.id} className="bg-white p-4 rounded-xl shadow mb-3 border-l-4 border-indigo-500 flex justify-between items-start">
+                <div>
+                  <p className="font-bold text-indigo-700">{log.mission_name}</p>
+                  <p className="text-sm text-gray-700 mt-1"><b>ปัญหา:</b> {log.actual_problem}</p>
+                  <p className="text-sm text-gray-700"><b>วิธีแก้:</b> {log.solution_action}</p>
+                  <p className="text-xs text-gray-400 mt-2">เวลา: {log.timestamp?.toDate?.()?.toLocaleString('th-TH') ?? '—'}</p>
+                </div>
+                <button onClick={() => handleEdit(log)} className="ml-3 px-2 py-1 bg-green-300 rounded hover:bg-green-400 text-xs">แก้ไข</button>
+              </div>
+            ))
+          )}
+        </section>
+      </div>
+    );
+  };
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
